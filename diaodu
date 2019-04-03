@@ -1,0 +1,1483 @@
+
+#include "iostream"
+#include <string>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <stack>
+#include <iomanip> //
+using namespace std;
+
+vector<vector<int>> car;
+vector<vector<int>> road;
+vector<vector<int>> cross;
+
+vector<vector<int>> mmap(1, vector<int>(1, 0));
+
+vector<vector<int>> floydmap;
+vector<vector<int>> mfloydmap;
+vector<vector<int>> beforefloyd;
+vector<vector<int>> comptable; //mmap[y1][x1]-mmap[y2][x2]  =   floydmap[comptable[y1][x1]][comptable[y2][x2]]  坐标对应floydmap一点
+
+vector<stack<int>> roadsseq;
+
+vector<vector<int>> croadorder;
+vector<int> roadcars;//道路每秒车流量
+vector<int> speedlim; // 每条道路限速
+vector<vector<vector<int>>> roadcondition; //[道路][车道][车位]  [][][0]车道内车辆数
+vector<vector<int>> streetcomptable; //beforefloyd[from][to] = street[streetcomptable[from][to]]
+vector<vector<int>> carroute; //车辆行驶路线 用于生成answer
+vector<int> getroadid; //对应道路id
+
+int fastest;//车速最快的
+int speedave;//中位车速
+int cars;//未到目的的车数
+int waitingcars;//等待状态的车数
+
+int mmapl = 1; //mmap横向长度
+int mmapd = 1; //mmap纵向长度
+int cpoint = 0;//cross num
+int spoint = 0;//street num
+bool carspeedcmp(const vector<int> &a, const vector<int> &b) {
+	if (a[3] > b[3])
+		return true;
+	else return false;
+}
+bool carcmp(const vector<int> &a, const vector<int> &b) {    //在库优先，出发时间早优先，相同看序号
+	if (a[5] < b[5])
+		return true;
+	else if (a[5] == b[5] && a[4] < b[4])
+		return true;
+	else if (a[5] == b[5] && a[4] == b[4] && a[0] < b[0])
+		return true;
+	else return false;
+}
+bool crosscmp(const vector<int> &a, const vector<int> &b) { //路口ID升序排列
+	return a[0] < b[0];
+}
+
+void ladd() { //左扩展mmap
+	for (int i = 0; i < mmapd; i++)
+		mmap[i].insert(mmap[i].begin(), 2, 0);
+	mmapl += 2;
+}
+void tadd() { //上扩展mmap
+	mmap.insert(mmap.begin(), vector<int>(mmapl, 0));
+	mmap.insert(mmap.begin(), vector<int>(mmapl, 0));
+	mmapd += 2;
+}
+void radd() { //右扩展mmap
+	for (int i = 0; i < mmapd; i++) {
+		mmap[i].push_back(0);
+		mmap[i].push_back(0);
+	}
+	mmapl += 2;
+}
+void dadd() { //下扩展mmap
+	mmap.push_back(vector<int>(mmapl, 0));
+	mmap.push_back(vector<int>(mmapl, 0));
+	mmapd += 2;
+}
+void turncross1(int n, int num) {
+	int i = 1;
+	for (; i < 4; i++) {
+		if (cross[n][i] == num) {
+			break;
+		}
+	}
+	switch (i)
+	{
+	case(1): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][3];
+		cross[n][3] = temp;
+		temp = cross[n][2];
+		cross[n][2] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	case(2): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][4];
+		cross[n][4] = cross[n][3];
+		cross[n][3] = cross[n][2];
+		cross[n][2] = temp;
+		break;
+	}
+	case(3): break;
+	case(4): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][2];
+		cross[n][2] = cross[n][3];
+		cross[n][3] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	default:
+		break;
+	}
+}
+void turncross2(int n, int num) {
+	int i = 1;
+	for (; i < 4; i++) {
+		if (cross[n][i] == num) {
+			break;
+		}
+	}
+	switch (i)
+	{
+	case(1): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][2];
+		cross[n][2] = cross[n][3];
+		cross[n][3] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	case(2): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][3];
+		cross[n][3] = temp;
+		temp = cross[n][2];
+		cross[n][2] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	case(3): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][4];
+		cross[n][4] = cross[n][3];
+		cross[n][3] = cross[n][2];
+		cross[n][2] = temp;
+		break;
+	}
+	case(4): break;
+	default:
+		break;
+	}
+}
+void turncross3(int n, int num) {
+	int i = 1;
+	for (; i < 4; i++) {
+		if (cross[n][i] == num) {
+			break;
+		}
+	}
+	switch (i)
+	{
+	case(1): break;
+	case(2): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][2];
+		cross[n][2] = cross[n][3];
+		cross[n][3] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	case(3): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][3];
+		cross[n][3] = temp;
+		temp = cross[n][2];
+		cross[n][2] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	case(4): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][4];
+		cross[n][4] = cross[n][3];
+		cross[n][3] = cross[n][2];
+		cross[n][2] = temp;
+		break;
+	}
+	default:
+		break;
+	}
+}
+void turncross4(int n, int num) {
+	int i = 1;
+	for (; i < 4; i++) {
+		if (cross[n][i] == num) {
+			break;
+		}
+	}
+	switch (i)
+	{
+	case(1): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][4];
+		cross[n][4] = cross[n][3];
+		cross[n][3] = cross[n][2];
+		cross[n][2] = temp;
+		break;
+	}
+	case(2): break;
+	case(3): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][2];
+		cross[n][2] = cross[n][3];
+		cross[n][3] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	case(4): {
+		int temp = cross[n][1];
+		cross[n][1] = cross[n][3];
+		cross[n][3] = temp;
+		temp = cross[n][2];
+		cross[n][2] = cross[n][4];
+		cross[n][4] = temp;
+		break;
+	}
+	default:
+		break;
+	}
+}
+void createmmap(int &y, int &x, int n) { // n对应cross记录
+	if (cross[n][5] != 1) {
+		cross[n][5] = 1;
+		if (cross[n][1] != -1) {   //路口右边道路
+			if (x == mmapl - 1)
+				radd();
+			if (mmap[y][x + 1] == 0) {  //没有记录
+				mmap[y][x + 1] = cross[n][1];
+				for (int i = 0;; i++) { //找到road记录
+					if (road[i][0] == cross[n][1]) {
+						if (road[i][4] == cross[n][0])
+							mmap[y][x + 2] = road[i][5];
+						else
+							mmap[y][x + 2] = road[i][4];
+						x += 2;
+						for (int i1 = 0;; i1++) {
+							if (cross[i1][0] == mmap[y][x]) {
+								turncross1(i1, mmap[y][x - 1]);
+								createmmap(y, x, i1);
+								break;
+							}
+						}
+						x -= 2;
+						break;
+					}
+				}
+			}
+		}
+		if (cross[n][2] != -1) {   //路口下面道路
+			if (y == mmapd - 1)
+				dadd();
+			if (mmap[y + 1][x] == 0) { //没有记录
+				mmap[y + 1][x] = cross[n][2];
+				for (int i = 0;; i++) { //找到road记录
+					if (road[i][0] == cross[n][2]) {
+						if (road[i][4] == cross[n][0])
+							mmap[y + 2][x] = road[i][5];
+						else
+							mmap[y + 2][x] = road[i][4];
+						y += 2;
+						for (int i1 = 0;; i1++) {
+							if (cross[i1][0] == mmap[y][x]) {
+								turncross2(i1, mmap[y - 1][x]);
+								createmmap(y, x, i1);
+								break;
+							}
+						}
+						y -= 2;
+						break;
+					}
+				}
+			}
+		}
+		if (cross[n][3] != -1) {   //左
+			if (x == 0) {
+				ladd();
+				x += 2;
+			}
+			if (mmap[y][x - 1] == 0) {  //没有记录
+				mmap[y][x - 1] = cross[n][3];
+				for (int i = 0;; i++) {
+					if (road[i][0] == cross[n][3]) {
+						if (road[i][4] == cross[n][0])
+							mmap[y][x - 2] = road[i][5];
+						else
+							mmap[y][x - 2] = road[i][4];
+						x -= 2;
+						for (int i1 = 0;; i1++) {
+							if (cross[i1][0] == mmap[y][x]) {
+								turncross3(i1, mmap[y][x + 1]);
+								createmmap(y, x, i1);
+								break;
+							}
+						}
+						x += 2;
+						break;
+					}
+				}
+			}
+		}
+		if (cross[n][4] != -1) {   //上
+			if (y == 0) {
+				tadd();
+				y += 2;
+			}
+			if (mmap[y - 1][x] == 0) {
+				mmap[y - 1][x] = cross[n][4];
+				for (int i = 0;; i++) {
+					if (road[i][0] == cross[n][4]) {
+						if (road[i][4] == cross[n][0])
+							mmap[y - 2][x] = road[i][5];
+						else
+							mmap[y - 2][x] = road[i][4];
+						y -= 2;
+						for (int i1 = 0;; i1++) {
+							if (cross[i1][0] == mmap[y][x]) {
+								turncross4(i1, mmap[y + 1][x]);
+								createmmap(y, x, i1);
+								break;
+							}
+						}
+						y += 2;
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+/**void showmmap() {
+	for (int i = 0; i < mmapd; i++) {
+		for (int j = 0; j < mmapl; j++)
+			cout << setw(6) << mmap[i][j];
+		cout << endl;
+	}
+}*/
+
+void initcomptable() {
+	for (int y = 0; y < mmapd; y++)
+		comptable.push_back(vector<int>(mmapl, 0));
+}
+/**void showcomptable() {
+	for (int i = 0; i < mmapd; i++) {
+		for (int j = 0; j < mmapl; j++)
+			cout << setw(6) << comptable[i][j];
+		cout << endl;
+	}
+}*/
+
+void floyd() {
+	for (int k = 0; k < cpoint; k++)
+	{
+		for (int i = 0; i < cpoint; i++) {
+			for (int j = 0; j < cpoint; j++)
+			{
+				if (floydmap[i][k] * floydmap[k][j] > 0) {
+					if ((i != j) && ((floydmap[i][j] == 0) || (floydmap[i][j] > floydmap[i][k] + floydmap[k][j]))) {
+						floydmap[i][j] = floydmap[i][k] + floydmap[k][j];
+					}
+				}
+			}
+		}
+	}
+}
+void mfloyd() {
+	for (int k = 0; k < cpoint; k++)
+	{
+		for (int i = 0; i < cpoint; i++) {
+			for (int j = 0; j < cpoint; j++)
+			{
+				if (mfloydmap[i][k] * mfloydmap[k][j] > 0) {
+					if ((i != j) && ((mfloydmap[i][j] == 0) || (mfloydmap[i][j] > mfloydmap[i][k] + mfloydmap[k][j]))) {
+						mfloydmap[i][j] = mfloydmap[i][k] + mfloydmap[k][j];
+					}
+				}
+			}
+		}
+	}
+}
+void initfloyd() { //floyd只记录道路长度  and initstreet
+	for (unsigned int i = 0; i < cross.size(); i++) {
+		floydmap.push_back(vector<int>(cross.size(), 0));
+		mfloydmap.push_back(vector<int>(cross.size(), 0));
+		beforefloyd.push_back(vector<int>(cross.size(), 0));
+		streetcomptable.push_back(vector<int>(cross.size(), 0));
+	}
+	for (int y = 0; y < mmapd; y += 2) {   //initcomptable
+		for (int x = 0; x < mmapl; x += 2) {
+			if (mmap[y][x] != 0) {
+				floydmap[cpoint][cpoint] = mmap[y][x];
+				mfloydmap[cpoint][cpoint] = mmap[y][x];
+				comptable[y][x] = cpoint;
+				cpoint++;
+			}
+		}
+	}
+
+	for (unsigned int rdata = 0; rdata < road.size(); rdata++) {
+		int from, to;
+		for (int a = 0; a < cpoint; a++) {
+			if (floydmap[a][a] == road[rdata][4])
+				from = a;
+			if (floydmap[a][a] == road[rdata][5])
+				to = a;
+		}
+		floydmap[from][to] = road[rdata][1];
+		int tmpspeed = road[rdata][2] > speedave ? speedave : road[rdata][2];
+		mfloydmap[from][to] = 10000 / (tmpspeed*road[rdata][3]);
+		beforefloyd[from][to] = road[rdata][1];
+
+		streetcomptable[from][to] = spoint++;
+		speedlim.push_back(road[rdata][2]);
+		getroadid.push_back(road[rdata][0]);
+		roadcondition.push_back(vector<vector<int>>(road[rdata][3], vector<int>(road[rdata][1] + 2, -1)));
+		roadcars.push_back(0);
+
+		if (road[rdata][6] == 1) {
+			floydmap[to][from] = road[rdata][1];
+			mfloydmap[to][from] = 10000 / (tmpspeed*road[rdata][3]);
+			beforefloyd[to][from] = road[rdata][1];
+
+			streetcomptable[to][from] = spoint++;
+			speedlim.push_back(road[rdata][2]);
+			getroadid.push_back(road[rdata][0]);
+			roadcondition.push_back(vector<vector<int>>(road[rdata][3], vector<int>(road[rdata][1] + 2, -1)));
+			roadcars.push_back(0);
+		}
+	}
+	floyd();
+	mfloyd();
+	for (unsigned int i = 0; i < roadcondition.size(); i++) {
+		for (unsigned int j = 0; j < roadcondition[i].size(); j++) {
+			roadcondition[i][j][0] = 0;
+			roadcondition[i][j][roadcondition[i][j].size() - 1] = 0;
+		}
+	}
+}
+void initcross() {
+	for (unsigned int crossid = 0; crossid < cross.size(); crossid++) {  //生成croadorder记录每个路口道路调度顺序
+		cross[crossid][5] = -1;
+		vector<int> tmp;
+		int i = 4;
+		for (int j = 1; j < 5; j++)
+			if (cross[crossid][j] == -1)
+				i--;
+		while (i > 0) { //四条道路升序
+			int minid, min;
+			min = 999999;
+			for (int j = 1; j < 5; j++) { //找最小
+				if (cross[crossid][j] != -1) {
+					if (cross[crossid][j] < min) {
+						if (tmp.size() > 0) {
+							if (cross[crossid][j] > cross[crossid][tmp[tmp.size() - 1]]) {
+								minid = j;
+								min = cross[crossid][j];
+							}
+						}
+						else {
+							minid = j;
+							min = cross[crossid][j];
+						}
+					}
+				}
+			}
+			tmp.push_back(minid);
+			i--;
+		}
+		croadorder.push_back(tmp);
+	}
+
+	for (int y = 0; y < mmapd; y += 2) {   //initcomptable
+		for (int x = 0; x < mmapl; x += 2) {
+			if (mmap[y][x] != 0) {
+				for (int i = 0; ; i++) {
+					if (cross[i][0] == mmap[y][x]) {  //找该条cross记录
+						int dest = comptable[y][x];
+						if (y + 2 < mmapd) {
+							int start = comptable[y + 2][x];
+							if (beforefloyd[start][dest] != 0 || beforefloyd[dest][start] != 0) {
+								int j;
+								for (j = 4;; j--) {
+									if (cross[i][j] == mmap[y + 1][x]) {
+										break;
+									}
+								}
+								if (beforefloyd[start][dest] != 0)
+									cross[i][j] = streetcomptable[start][dest];
+								else
+									cross[i][j] = -1;
+								if (beforefloyd[dest][start] != 0)
+									cross[i][j + 4] = streetcomptable[dest][start];
+							}
+						}
+						if (y - 2 >= 0) {
+							int start = comptable[y - 2][x];
+							if (beforefloyd[start][dest] != 0 || beforefloyd[dest][start] != 0) {
+								int j;
+								for (j = 4;; j--) {
+									if (cross[i][j] == mmap[y - 1][x]) {
+										break;
+									}
+								}
+								if (beforefloyd[start][dest] != 0)
+									cross[i][j] = streetcomptable[start][dest];
+								else
+									cross[i][j] = -1;
+								if (beforefloyd[dest][start] != 0)
+									cross[i][j + 4] = streetcomptable[dest][start];
+							}
+						}
+						if (x + 2 < mmapl) {
+							int start = comptable[y][x + 2];
+							if (beforefloyd[start][dest] != 0 || beforefloyd[dest][start] != 0) {
+								int j;
+								for (j = 4;; j--) {
+									if (cross[i][j] == mmap[y][x + 1]) {
+										break;
+									}
+								}
+								if (beforefloyd[start][dest] != 0)
+									cross[i][j] = streetcomptable[start][dest];
+								else
+									cross[i][j] = -1;
+								if (beforefloyd[dest][start] != 0)
+									cross[i][j + 4] = streetcomptable[dest][start];
+							}
+						}
+						if (x - 2 >= 0) {
+							int start = comptable[y][x - 2];
+							if (beforefloyd[start][dest] != 0 || beforefloyd[dest][start] != 0) {
+								int j;
+								for (j = 4;; j--) {
+									if (cross[i][j] == mmap[y][x - 1]) {
+										break;
+									}
+								}
+								if (beforefloyd[start][dest] != 0)
+									cross[i][j] = streetcomptable[start][dest];
+								else
+									cross[i][j] = -1;
+								if (beforefloyd[dest][start] != 0)
+									cross[i][j + 4] = streetcomptable[dest][start];
+							}
+						}
+						break;
+					}
+				}
+			}
+		}
+	}
+}
+
+int intoline(int roadinf, int roadspeed, vector<int> &car, int carinf) { //能否进入道路
+	for (unsigned int i = 0; i < roadcondition[roadinf].size(); i++) {  //每一条车道  判断道路是否有空
+		if (roadcondition[roadinf][i][1] == -1) { //有空位
+			if (roadspeed > 1) {
+				int j = 2;
+				for (; j <= roadspeed; j++) { //该车道往前寻找空位
+					if (roadcondition[roadinf][i][j] != -1) {
+						j++;
+						break;
+					}
+				}
+				j--;
+				if (roadcondition[roadinf][i][j] == -1) {
+					roadcondition[roadinf][i][j] = carinf;
+					car[4] = j;
+				}
+				else if (carroute[roadcondition[roadinf][i][j]][1] == 0) {
+					roadcondition[roadinf][i][j - 1] = carinf;
+					car[4] = j - 1;
+				}
+				else return 2;
+			}
+			else {
+				roadcondition[roadinf][i][1] = carinf;
+				car[4] = 1;
+			}
+
+			car[2] = roadinf;
+			car[3] = i;
+			roadcondition[roadinf][i][0]++; //车道内车辆数+1
+			return 1;
+		}
+		else if (carroute[roadcondition[roadinf][i][1]][1] == 1)
+			return 2;
+	}
+	return 0;
+}
+bool cargetdir(vector<int> &locinf, stack<int> &roadseq, int fastorslow) {
+	//int xchange, ychange;
+	//int x1, y1, x2, y2;   //从y1,x1到y2,x2
+	int x1 = locinf[1];
+	int y1 = locinf[2];
+	//x2 = locinf[3];
+	//y2 = locinf[4];
+	int xchange = locinf[5];
+	int ychange = locinf[6];
+	int realx, realy, plusx, plusy;
+	realx = locinf[3] - locinf[1]; //x2-x1
+	realy = locinf[4] - locinf[2]; //y2-y1
+	plusx = xchange = locinf[5];
+	plusy = ychange = locinf[6];
+	int xory = locinf[0];
+
+	if (realx != 0 || realy != 0) { //未到达目的地
+		if (realy == 0 || realx == 0) { //重新判断优先选择的方向
+			plusx = locinf[5] = (realx >= 0) ? 2 : -2; //xchange
+			plusy = locinf[6] = (realy >= 0) ? 2 : -2; //ychange
+			locinf[0] = (realx * realx) >= (realy * realy) ? 1 : 0;
+		}
+		int start = comptable[locinf[2]][locinf[1]]; //当前起始点 comptable[y1][x1]
+		int dest = comptable[locinf[4]][locinf[3]];  //终点 comptable[y2][x2]
+		if (locinf[0] > 0) { //x优先
+			if (locinf[1] + locinf[5] >= 0 && locinf[1] + locinf[5] < mmapl) { //防越界 x1 + xchange >= 0 && x1 + xchange < mmapl
+				int dirx = comptable[locinf[2]][locinf[1] + locinf[5]]; //comptable[y1][x1 + xchange]
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][dirx] != 0) && ((dirx == dest) || (floydmap[dirx][dest] != 0) && (floydmap[start][dest] > floydmap[dirx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] += locinf[5]; //x1+=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[1] -= locinf[5];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][dirx] != 0) && ((dirx == dest) || (mfloydmap[dirx][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[dirx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] += locinf[5]; //x1+=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[1] -= locinf[5];
+							}
+						}
+					}
+				}
+			}
+			if (locinf[2] + locinf[6] >= 0 && locinf[2] + locinf[6] < mmapd) { //y1 + ychange >= 0 && y1 + ychange < mmapd
+				int diry = comptable[locinf[2] + locinf[6]][locinf[1]]; //comptable[y1 + ychange][x1]
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][diry] != 0) && ((diry == dest) || (floydmap[diry][dest] != 0) && (floydmap[start][dest] > floydmap[diry][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][diry];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] += locinf[6]; //y1+=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[2] -= locinf[6];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][diry] != 0) && ((diry == dest) || (mfloydmap[diry][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[diry][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][diry];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] += locinf[6]; //y1+=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[2] -= locinf[6];
+							}
+						}
+					}
+				}
+			}
+			if (locinf[2] - locinf[6] >= 0 && locinf[2] - locinf[6] < mmapd) { //y1 - ychange >= 0 && y1 - ychange < mmapd
+				int dirnegy = comptable[locinf[2] - locinf[6]][locinf[1]];
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][dirnegy] != 0) && ((dirnegy == dest) || (floydmap[dirnegy][dest] != 0) && (floydmap[start][dest] > floydmap[dirnegy][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegy];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] -= locinf[6]; //y1-=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[2] += locinf[6];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][dirnegy] != 0) && ((dirnegy == dest) || (mfloydmap[dirnegy][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[dirnegy][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegy];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] -= locinf[6]; //y1-=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[2] += locinf[6];
+							}
+						}
+					}
+				}
+			}
+			if (locinf[1] - locinf[5] >= 0 && locinf[1] - locinf[5] < mmapl) {
+				int dirnegx = comptable[locinf[2]][locinf[1] - locinf[5]];
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][dirnegx] != 0) && ((dirnegx == dest) || (floydmap[dirnegx][dest] != 0) && (floydmap[start][dest] > floydmap[dirnegx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] -= locinf[5]; //x1-=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+
+								return true;
+							}
+							else {
+								locinf[1] += locinf[5];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][dirnegx] != 0) && ((dirnegx == dest) || (mfloydmap[dirnegx][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[dirnegx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] -= locinf[5]; //x1-=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[1] += locinf[5];
+							}
+						}
+					}
+				}
+			}
+
+			locinf[5] = xchange;
+			locinf[6] = ychange;
+			locinf[0] = xory;
+			return false;
+		}
+		else { //y优先
+			if (locinf[2] + locinf[6] >= 0 && locinf[2] + locinf[6] < mmapd) { //y1 + ychange >= 0 && y1 + ychange < mmapd
+				int diry = comptable[locinf[2] + locinf[6]][locinf[1]]; //comptable[y1 + ychange][x1]
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][diry] != 0) && ((diry == dest) || (floydmap[diry][dest] != 0) && (floydmap[start][dest] > floydmap[diry][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][diry];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] += locinf[6]; //y1+=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[2] -= locinf[6];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][diry] != 0) && ((diry == dest) || (mfloydmap[diry][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[diry][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][diry];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] += locinf[6]; //y1+=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+
+								return true;
+							}
+							else {
+								locinf[2] -= locinf[6];
+							}
+						}
+					}
+				}
+			}
+			if (locinf[1] + locinf[5] >= 0 && locinf[1] + locinf[5] < mmapl) { //防越界 x1 + xchange >= 0 && x1 + xchange < mmapl
+				int dirx = comptable[locinf[2]][locinf[1] + locinf[5]]; //comptable[y1][x1 + xchange]
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][dirx] != 0) && ((dirx == dest) || (floydmap[dirx][dest] != 0) && (floydmap[start][dest] > floydmap[dirx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] += locinf[5]; //x1+=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+
+								return true;
+							}
+							else {
+								locinf[1] -= locinf[5];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][dirx] != 0) && ((dirx == dest) || (mfloydmap[dirx][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[dirx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] += locinf[5]; //x1+=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[1] -= locinf[5];
+							}
+						}
+					}
+				}
+			}
+			if (locinf[1] - locinf[5] >= 0 && locinf[1] - locinf[5] < mmapl) {
+				int dirnegx = comptable[locinf[2]][locinf[1] - locinf[5]];
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][dirnegx] != 0) && ((dirnegx == dest) || (floydmap[dirnegx][dest] != 0) && (floydmap[start][dest] > floydmap[dirnegx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] -= locinf[5]; //x1-=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[1] += locinf[5];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][dirnegx] != 0) && ((dirnegx == dest) || (mfloydmap[dirnegx][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[dirnegx][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegx];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[1] -= locinf[5]; //x1-=xchange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[1] += locinf[5];
+							}
+						}
+					}
+				}
+			}
+			if (locinf[2] - locinf[6] >= 0 && locinf[2] - locinf[6] < mmapd) { //y1 - ychange >= 0 && y1 - ychange < mmapd
+				int dirnegy = comptable[locinf[2] - locinf[6]][locinf[1]];
+				if (fastorslow == 1) {
+					if ((beforefloyd[start][dirnegy] != 0) && ((dirnegy == dest) || (floydmap[dirnegy][dest] != 0) && (floydmap[start][dest] > floydmap[dirnegy][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegy];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] -= locinf[6]; //y1-=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[2] += locinf[6];
+							}
+						}
+					}
+				}
+				else {
+					if ((beforefloyd[start][dirnegy] != 0) && ((dirnegy == dest) || (mfloydmap[dirnegy][dest] != 0) && (mfloydmap[start][dest] > mfloydmap[dirnegy][dest]))) { //判断道路是否可行
+						int roadinf = streetcomptable[start][dirnegy];//roadinf为道路标记
+						if (roadcars[roadinf] > 0) { //可以进入
+							locinf[2] -= locinf[6]; //y1-=ychange                
+							if (cargetdir(locinf, roadseq, fastorslow)) {
+								roadcars[roadinf]--;
+								roadseq.push(roadinf);
+								return true;
+							}
+							else {
+								locinf[2] += locinf[6];
+							}
+						}
+					}
+				}
+			}
+		}
+		locinf[5] = xchange;
+		locinf[6] = ychange;
+		locinf[0] = xory;
+		return false;
+	}
+	else { //到达目的地
+		roadseq.push(-2);
+		return true;
+	}
+}
+int roadfirstcar(int roadinf) { //获得第一优先等待车辆
+	int linel = roadcondition[roadinf][0].size() - 2;
+	vector<int> lineunfinish;
+	for (unsigned int line = 0; line < roadcondition[roadinf].size(); line++) {
+		if (roadcondition[roadinf][line][linel + 1] > 0)
+			lineunfinish.push_back(line);
+	}
+
+	if (lineunfinish.size() == 0) return -1;
+	for (int loc = linel; loc > 0; loc--) {//车位
+		for (unsigned int i = 0; i < lineunfinish.size(); i++) {//有等待状态车的车道
+			if (roadcondition[roadinf][lineunfinish[i]][loc] != -1) { //车位有车
+				int carid = roadcondition[roadinf][lineunfinish[i]][loc];
+				if (carroute[carid][1] == 1)
+					return carid;
+				else continue;
+			}
+		}
+	}
+	return -1;
+}
+void wayforward(int crossnum, vector<int> &vec, vector<int> &tmp) { //[1]左转 [2]直行 [3]右转
+	int oldroad = vec[2];
+	int newroad;
+	newroad = vec[1];
+
+	for (int i = 1; i < 4; i++) {
+		tmp[i] = -1;
+	}
+	int inroad;
+
+	for (inroad = 1; inroad < 5; inroad++) {
+		if (cross[crossnum][inroad] == oldroad)
+			break;
+	}
+	if (newroad == -2) {
+		return;
+	}
+	else {
+		for (int outroad = 5; outroad < 9; outroad++) {
+			if (cross[crossnum][outroad] == newroad) {
+				int judgenum = (outroad - inroad) % 4;
+				tmp[judgenum] = newroad;
+				break;
+			}
+		}
+	}
+}
+void scheduleline(int roadnum, int line) {
+	if (roadcondition[roadnum][line][roadcondition[roadnum][line].size() - 1] > 0) { //该车道内有等待状态车辆
+		int flag = 0;
+		for (int loc = roadcondition[roadnum][line].size() - 2; loc > 0; loc--) { //每一个车位
+			if (roadcondition[roadnum][line][loc] != -1 && (carroute[roadcondition[roadnum][line][loc]][1] == 1)) {  //该车位有车且为等待状态
+				int carid = roadcondition[roadnum][line][loc];
+				int speed = carroute[carid][0] > speedlim[roadnum] ? speedlim[roadnum] : carroute[carid][0];
+
+				int i = 1;
+				for (; i <= speed; i++) {
+					if (loc + i > roadcondition[roadnum][line].size() - 2) {
+						flag = 1;
+						break;
+					}
+					if (roadcondition[roadnum][line][loc + i] != -1) {
+						i++;
+						break;
+					}
+				}
+				if (flag == 1) //等待状态且能出路口
+					continue;
+				i--;
+				if (roadcondition[roadnum][line][loc + i] != -1 && (carroute[roadcondition[roadnum][line][loc + i]][1] == 1)) {
+					continue;
+				}
+				roadcondition[roadnum][line][loc] = -1;
+				if (roadcondition[roadnum][line][loc + i] == -1) {
+					roadcondition[roadnum][line][loc + i] = carid;
+					carroute[carid][4] = loc + i;
+				}
+				else if (carroute[roadcondition[roadnum][line][loc + i]][1] == 0) {
+					roadcondition[roadnum][line][loc + i - 1] = carid;
+					carroute[carid][4] = loc + i - 1;
+				}
+				roadcondition[roadnum][line][roadcondition[roadnum][line].size() - 1]--;
+				carroute[carid][1] = 0;
+				waitingcars--;
+			}
+			if (roadcondition[roadnum][line][roadcondition[roadnum][line].size() - 1] == 0)
+				break;
+		}
+	}
+}
+void drivewait(int crossnum) {
+	vector <vector<int>> carqueue;
+	vector<vector<int>> strlr;
+	for (unsigned int crossi = 0; crossi < croadorder[crossnum].size(); crossi++) {
+		int roadnum = croadorder[crossnum][crossi];
+		int roadinf = cross[crossnum][roadnum];
+		if (roadinf != -1) {
+			int firstcar = roadfirstcar(roadinf);
+			if (firstcar != -1) {
+				vector<int> tmp(3, -1);
+				tmp[0] = firstcar;
+				tmp[2] = roadinf;
+				tmp[1] = roadsseq[firstcar].top();
+				carqueue.push_back(tmp);
+			}
+		}
+	}
+
+	for (int i = 0; i < carqueue.size(); i++) { //[1]左转 [2]直行 [3]右转
+		vector<int> tmp(4, -1);
+		wayforward(crossnum, carqueue[i], tmp);
+		strlr.push_back(tmp);
+	}
+
+	for (int linei = 0; linei < carqueue.size(); linei++) {  //按优先级调度道路
+		while (carqueue[linei][0] != -1) {  //道路有车
+			int carinf = carqueue[linei][0];//考虑第一辆车
+			int road = carroute[carinf][2];
+			int line = carroute[carinf][3];
+			int lineloc = carroute[carinf][4];
+			int stilldis = roadcondition[road][0].size() - 2 - lineloc;
+
+			if (carqueue[linei][1] == -2) { //到达目的地
+				cars--;
+				roadcondition[road][line][lineloc] = -1; //变为空
+				roadcondition[road][line][0]--; //车道内车减一
+			}
+			else { //道路内还有等待状态的车
+				int straight = strlr[linei][2];
+				int left = strlr[linei][1];
+				int right = strlr[linei][3];
+				int speed = carroute[carinf][0];
+
+				int flag = 0;//该次调度是否成功
+
+				if (straight != -1) { //考虑直行
+					if (speedlim[straight] > stilldis) { //考虑出路口速度
+						int roadspeed = speed > (speedlim[straight] - stilldis) ? (speedlim[straight] - stilldis) : speed;
+						int intolineres = intoline(straight, roadspeed, carroute[carinf], carinf);
+						if (intolineres == 1) { //进入道路成功
+							carroute[carinf].push_back(getroadid[straight]); //答案添加路径
+							flag = 1;
+						}
+						else if (intolineres == 2) { //该道路末尾有车等待
+							break;
+						}
+					}
+				}
+				else if (left != -1) { //考虑左转
+					int existstr = 0;
+					for (int i = 0; i < carqueue.size(); i++) {  //有没有目标车道的直行优先级
+						if (strlr[i][2] == left) {
+							existstr = 1;
+							break;
+						}
+					}
+					if (existstr == 1) //先调度下一车道
+						break;
+					else { //左转
+						if (speedlim[left] > stilldis) { //考虑出路口速度
+							int roadspeed = speed > (speedlim[left] - stilldis) ? (speedlim[left] - stilldis) : speed;
+							int intolineres = intoline(left, roadspeed, carroute[carinf], carinf);
+							if (intolineres == 1) { //进入道路成功
+								carroute[carinf].push_back(getroadid[left]); //答案添加路径
+								flag = 1;
+							}
+							else if (intolineres == 2) { //该道路末尾有车等待
+								break;
+							}
+						}
+					}
+				}
+				else if (right != -1) { //考虑右转
+					int existstr = 0;
+					for (int i = 0; i < carqueue.size(); i++) {  //有没有直行目标车道
+						if (strlr[i][2] == right) {
+							existstr = 1;
+							break;
+						}
+					}
+					if (existstr == 1) //先调度下一车道
+						break;
+					else {
+						int existleft = 0;//有没有左转进入目标车道
+						for (int i = 0; i < carqueue.size(); i++) {
+							if (strlr[i][1] == right) {
+								existleft = 1;
+								break;
+							}
+						}
+						if (existleft == 1) //先调度下一车道
+							break;
+						else {
+							if (speedlim[right] > stilldis) {
+								int roadspeed = speed > (speedlim[right] - stilldis) ? (speedlim[right] - stilldis) : speed;
+								int intolineres = intoline(right, roadspeed, carroute[carinf], carinf);
+								if (intolineres == 1) { //进入道路成功
+									carroute[carinf].push_back(getroadid[right]); //答案添加路径
+									flag = 1;
+								}
+								else if (intolineres == 2) {
+									break;
+								}
+							}
+						}
+					}
+				}
+
+				if (flag == 1) { //成功
+					roadsseq[carinf].pop();
+					roadcondition[road][line][lineloc] = -1; //变为空
+					roadcondition[road][line][0]--; //车道内车减一
+				}
+				else {
+					roadcondition[road][line][lineloc] = -1; //变为空
+					roadcondition[road][line][roadcondition[road][line].size() - 2] = carinf;
+					carroute[carinf][4] = roadcondition[road][line].size() - 2;
+				}
+			}
+
+			carroute[carinf][1] = 0; //变为终止状态
+			waitingcars--;
+			roadcondition[road][line][roadcondition[road][line].size() - 1]--; //该车道等待车辆-1
+
+			scheduleline(road, line);//重新调度该车道
+
+			int firstcar = roadfirstcar(road);//更改firstcar信息
+			carqueue[linei][0] = firstcar;
+			if (firstcar != -1) { //该道路还有等待车辆
+				carqueue[linei][1] = roadsseq[firstcar].top();
+				wayforward(crossnum, carqueue[linei], strlr[linei]);
+			}
+			else {
+				for (int j = 1; j < 4; j++)
+					strlr[linei][j] = -1;
+			}
+		}
+	}
+}
+void solvedeadlock(int time, int crossnum) {
+	for (unsigned int crossi = 0; crossi < croadorder[crossnum].size(); crossi++) {
+		int roadnum = croadorder[crossnum][crossi];
+		int roadinf = cross[crossnum][roadnum];
+		if (roadinf != -1) {
+			int firstcar = roadfirstcar(roadinf);
+			if (firstcar != -1) {
+				for (int carid = 0; carid < car.size(); carid++) {
+					if (car[carid][0] == carroute[firstcar][5]) {
+						car[carid][4] = time + 1;
+						return;
+					}
+				}
+			}
+		}
+	}
+}
+
+void outgarage(int time) {
+	for (int carid = 0; carid < car.size(); carid++) { //车库里的车辆
+		if (car[carid][4] <= time && car[carid][5] == 0) {
+			int startloc, endloc, speed;
+			startloc = car[carid][1];
+			endloc = car[carid][2];
+			speed = car[carid][3];
+
+			int x1, y1, x2, y2;   //从y1,x1到y2,x2
+			for (y1 = 0; y1 < mmapd; y1 += 2) {
+				int flag = 0;
+				for (x1 = 0; x1 < mmapl; x1 += 2) {
+					if (mmap[y1][x1] == startloc) {
+						flag = 1;
+						break;
+					}
+				}
+				if (flag == 1) break;
+			}
+			for (y2 = 0; y2 < mmapd; y2 += 2) {
+				int flag = 0;
+				for (x2 = 0; x2 < mmapl; x2 += 2) {
+					if (mmap[y2][x2] == endloc) {
+						flag = 1;
+						break;
+					}
+				}
+				if (flag == 1) break;
+			}
+
+			int distx, disty; //相隔道路数
+			distx = x2 - x1;
+			disty = y2 - y1;
+			int xchange, ychange; //x、y改变量
+			xchange = ((distx >= 0) ? 2 : -2);
+			ychange = ((disty >= 0) ? 2 : -2);
+
+			vector<int> tmp = { speed,0,0,0,0,car[carid][0],car[carid][4] };
+			int xory = (distx * distx) >= (disty * disty) ? 1 : 0;
+
+			vector<int> locinf = { xory,x1,y1,x2,y2,xchange,ychange };
+			stack<int> roadseq;
+			int fastorslow = speed >= speedave ? 1 : 0;
+
+			if (cargetdir(locinf, roadseq, fastorslow)) {
+				int roadinf = roadseq.top();
+				int roadspeed = speed > speedlim[roadinf] ? speedlim[roadinf] : speed;
+				if (intoline(roadinf, roadspeed, tmp, carroute.size()) == 1) {
+					car[carid][5] = 1;
+					tmp.push_back(getroadid[roadinf]);
+					carroute.push_back(tmp);
+					roadseq.pop();
+					roadsseq.push_back(roadseq);
+				}
+			}
+			else
+				car[carid][4] = car[carid][4] + (fastest / car[carid][3]) + 1;
+		}
+		else break;
+	}
+}
+
+int main(int argc, char *argv[])
+{
+	std::cout << "Begin" << std::endl;
+
+	if (argc < 5) {
+		std::cout << "please input args: carPath, roadPath, crossPath, answerPath" << std::endl;
+		exit(1);
+	}
+
+	std::string carPath(argv[1]);
+	std::string roadPath(argv[2]);
+	std::string crossPath(argv[3]);
+	std::string answerPath(argv[4]);
+
+	std::cout << "carPath is " << carPath << std::endl;
+	std::cout << "roadPath is " << roadPath << std::endl;
+	std::cout << "crossPath is " << crossPath << std::endl;
+	std::cout << "answerPath is " << answerPath << std::endl;
+
+	// TODO:read input filebuf
+
+	// TODO:read input filebuf
+
+	string infline;
+	ifstream cartxt(carPath, ios_base::in);
+	if (cartxt) { //car.txt
+		int c[5];
+		while (getline(cartxt, infline)) {
+			if (infline[0] == '#')
+				continue;
+			cars++;
+			c[1] = c[2] = c[3] = c[4] = c[0] = 0;
+			int i = 0;
+			for (unsigned int j = 0; j < infline.length(); j++) {
+				if (isdigit(infline[j])) {
+					c[i] *= 10;
+					c[i] += (infline[j] - '0');
+				}
+				else if (infline[j] == ',')
+					i++;
+			}
+			vector<int> tmp = { c[0],c[1],c[2],c[3],c[4],0 };
+			car.push_back(tmp);
+		}
+		cartxt.close();
+
+		sort(car.begin(), car.end(), carspeedcmp);
+		fastest = car[0][3];
+		speedave = car[car.size() / 2][3];
+
+		sort(car.begin(), car.end(), carcmp); //出发时间早优先，相同看序号
+	};
+
+	ifstream roadtxt(roadPath, ios_base::in);
+	if (roadtxt) { //road.txt
+		int c[7];
+		while (getline(roadtxt, infline)) {
+			if (infline[0] == '#')
+				continue;
+			c[1] = c[2] = c[3] = c[4] = c[5] = c[6] = c[0] = 0;
+			int i = 0;
+			for (unsigned int j = 0; j < infline.length(); j++) {
+				if (isdigit(infline[j])) {
+					c[i] *= 10;
+					c[i] += (infline[j] - '0');
+				}
+				else if (infline[j] == ',')
+					i++;
+			}
+			vector<int> tmp = { c[0],c[1],c[2],c[3],c[4],c[5],c[6] };
+			road.push_back(tmp);
+		}
+		roadtxt.close();
+	}
+
+	ifstream crosstxt(crossPath, ios_base::in);
+	if (crosstxt) { //road.txt
+		int c[5];
+		while (getline(crosstxt, infline)) {
+			if (infline[0] == '#')
+				continue;
+			c[1] = c[2] = c[3] = c[4] = c[0] = 0;
+			int i = 0;
+			for (unsigned int j = 0; j < infline.length(); j++) {
+				if (isdigit(infline[j])) {
+					c[i] *= 10;
+					c[i] += (infline[j] - '0');
+				}
+				else if (infline[j] == ',') {
+					i++;
+				}
+				else if (infline[j] == '-') {
+					c[i] = -1;
+					j++;
+				}
+			}
+			vector<int> tmp = { c[0],c[1],c[2],c[3],c[4],0,-1,-1,-1 };
+			cross.push_back(tmp);
+		}
+		crosstxt.close();
+
+		sort(cross.begin(), cross.end(), crosscmp); //路口ID升序排列
+	}
+
+	// TODO:process
+
+	int initx = 0;
+	int inity = 0;
+	mmap[0][0] = cross[0][0];
+	createmmap(initx, inity, 0);
+	//showmmap();
+
+	initcomptable();
+
+	initfloyd();
+	initcross();
+	//showfloyd();
+	//showcomptable();
+
+	cars = car.size();
+
+	for (int time = 0; cars > 0; time++) { //时间
+		waitingcars = 0;
+		for (unsigned int roadnum = 0; roadnum < roadcondition.size(); roadnum++) {  //对每一条道路
+			for (unsigned int line = 0; line < roadcondition[roadnum].size(); line++) { //每一条车道
+				if (roadcondition[roadnum][line][0] > 0) { //该车道内有车
+					int flag = 0;
+					for (int loc = roadcondition[roadnum][line].size() - 2; loc > 0; loc--) { //每一个车位
+						if (roadcondition[roadnum][line][loc] != -1) {  //该车位有车
+							int carid = roadcondition[roadnum][line][loc];
+							int speed = carroute[carid][0] > speedlim[roadnum] ? speedlim[roadnum] : carroute[carid][0];
+							if ((speed + loc > roadcondition[roadnum][line].size() - 2) && flag == 0) { //车道第一辆车出路口
+								flag++;
+								carroute[carid][1] = 1;
+								roadcondition[roadnum][line][roadcondition[roadnum][line].size() - 1]++;
+								waitingcars++;
+							}
+							else {  //不出路口或不是第一辆车
+								flag++;
+								int i = 1;
+								for (; i <= speed; i++) { //找到阻挡的第一辆车
+									if (roadcondition[roadnum][line][loc + i] != -1) {
+										i++;
+										break;
+									}
+								}
+								i--;
+								if (roadcondition[roadnum][line][loc + i] == -1) { //前面没车 即不出路口
+									roadcondition[roadnum][line][loc] = -1;
+									roadcondition[roadnum][line][loc + i] = carid;
+									carroute[carid][4] = loc + i;
+								}
+								else if (carroute[roadcondition[roadnum][line][loc + i]][1] == 0) { //前面有车终止状态
+									roadcondition[roadnum][line][loc] = -1;
+									roadcondition[roadnum][line][loc + i - 1] = carid;
+									carroute[carid][4] = loc + i - 1;
+								}
+								else { //前面有车且为等待状态
+									carroute[carid][1] = 1;
+									roadcondition[roadnum][line][roadcondition[roadnum][line].size() - 1]++;
+									waitingcars++;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		int judgetimes = 0;
+		while (waitingcars > 0) {  //所有等待状态的车辆
+			int flag = waitingcars;
+			for (unsigned int crossnum = 0; crossnum < cross.size(); crossnum++)  //升序调度每个路口
+				drivewait(crossnum);
+			if (flag == waitingcars) {
+				judgetimes = 1;
+				break;
+			}
+		}
+
+		if (judgetimes == 1) {//死锁了
+			for (int carid = 0; carid < car.size(); carid++) //重置出库状态
+				car[carid][5] = 0;
+
+			for (unsigned int crossnum = 0; crossnum < cross.size(); crossnum++) //导致死锁的车辆延迟出发
+				solvedeadlock(time, crossnum);
+
+			for (unsigned int i = 0; i < roadcondition.size(); i++) {
+				for (unsigned int j = 0; j < roadcondition[i].size(); j++) {
+					for (int k = 1; k < roadcondition[i][j].size() - 1; k++) {
+						roadcondition[i][j][k] = -1;
+					}
+					roadcondition[i][j][0] = 0;
+					roadcondition[i][j][roadcondition[i][j].size() - 1] = 0;
+				}
+			}
+			carroute.clear();
+			roadsseq.clear();
+
+			time = -1;
+			cars = car.size();
+			sort(car.begin(), car.end(), carcmp);
+			continue;
+		}
+
+		for (int i = 0; i < roadcars.size(); i++) {
+			roadcars[i] = 3 * roadcondition[i].size() - 2;
+		}
+
+		if (car[0][5] == 1)
+			continue;
+		outgarage(time);
+		sort(car.begin(), car.end(), carcmp);
+	}
+
+	// TODO:write output file
+
+	ofstream answertxt(answerPath, ios_base::out);
+	if (answertxt) {
+		answertxt << "#(carId,StartTime,RoadId...)" << endl;
+		for (unsigned int i = 0; i < carroute.size(); i++) {
+			answertxt << "(" << carroute[i][5];
+			for (unsigned int j = 6; j < carroute[i].size(); j++) {
+				answertxt << "," << carroute[i][j];
+			}
+			answertxt << ")" << endl;
+		}
+		answertxt.close();
+	}
+	return 0;
+}
+
