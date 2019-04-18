@@ -4,7 +4,38 @@
 3）每当过了一个RTT，cwnd = cwnd*2; 呈指数上升
 4）还有一个ssthresh（slow start threshold），是一个上限，当cwnd >= ssthresh时，就会进入“拥塞避免算法”
 
+避免拥塞：
 一般来说ssthresh的值是65535，单位是字节，当cwnd达到这个值时后，算法如下：
 1）收到一个ACK时，cwnd = cwnd + 1/cwnd
 2）当每过一个RTT时，cwnd = cwnd + 1
 这样就可以避免增长过快导致网络拥塞，慢慢的增加调整到网络的最佳值。很明显，是一个线性上升的算法。
+
+发生拥塞：
+1）等到RTO超时，重传数据包。TCP认为这种情况太糟糕，反应也很强烈。
+sshthresh =  cwnd /2
+cwnd 重置为 1
+进入慢启动过程
+
+2）收到3个duplicate ACK时就开启重传，而不用等到RTO超时。Fast Retransmit快速重传算法。进入快速恢复状态
+TCP Tahoe（TCP早期版本）的实现和RTO超时一样。
+TCP Reno（TCP较新版本）的实现是：
+cwnd = cwnd /2
+sshthresh = cwnd
+进入快速恢复算法——Fast Recovery
+快速恢复算法是认为，你还有3个Duplicated Acks说明网络也不那么糟糕，所以没有必要像RTO超时那么强烈。
+
+Fast Recovery快速恢复算法如下：
+cwnd = sshthresh  + 3 * MSS （3的意思是确认有3个数据包被收到了）
+重传Duplicated ACKs指定的数据包
+如果再收到duplicated Acks，那么cwnd = cwnd +1
+如果收到了新的Ack，那么，cwnd = sshthresh ，然后就进入了拥塞避免的算法了。
+算法也有问题，那就是——它依赖于3个重复的Acks。3个重复的Acks并不代表只丢了一个数据包。但这个算法只会重传一个，而剩下的那些包只能等到RTO超时。
+于是，进入了恶梦模式——超时一个窗口就减半一下，多个超时会使TCP的传输速度呈级数下降，而且也不会触发Fast Recovery算法。
+TCP New Reno改进的Fast Recovery快速恢复算法：
+当sender这边收到了3个Duplicated Acks，进入Fast Retransimit快速重传模式，重传重复Acks指示的那个包。
+如果只有这一个包丢了，那么，重传这个包后回来的Ack会把整个已经被sender传输出去的数据ack回来。如果没有的话，说明有多个包丢了。
+称这个ACK为Partial ACK。一旦Sender这边发现了Partial ACK出现，就可以推理出来有多个包被丢了，于是继续重传sliding window里未被ack的第一个包。
+直到再也收不到了Partial Ack，才真正结束Fast Recovery这个过程。收到第1个Partial ACK时，将重传定时器复位。
+
+如果cwnd<=sshthresh时出现的丢包，那么TCP的sshthresh就会减了一半，然后等cwnd又很快地以指数级增涨爬到这个地方时，就会成慢慢的线性增涨。
+
