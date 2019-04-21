@@ -148,5 +148,18 @@ bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 客户端
 1、创建套接字（socket）
 2、向服务器发出连接请求（connect）
+	sockaddr_in addrConServer;
+	addrConServer.sin_family = AF_INET;
+	addrConServer.sin_port = htons(8888);
+	addrConServer.sin_addr.S_un.S_addr = inet_addr("127.0.0.1");
+	if (connect(clientSocket, (SOCKADDR*)&addrConServer, sizeof(addrConServer)) == SOCKET_ERROR)
+	{
+		printf("客户端建立连接失败！\n");
+		closesocket(clientSocket);
+		WSACleanup();
+		return 0;
+	}
+	else 
+		printf("客户端建立连接成功，准备发送数据！\n");
 3、和服务器端进行通信（send/recv）
 4、关闭套接字
