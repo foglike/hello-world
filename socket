@@ -89,7 +89,7 @@ bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 		return 0;
 	}
 
-	if (listen(listenSocket, 5) == SOCKET_ERROR) //监听指定端口
+	if (listen(listenSocket, 5) == SOCKET_ERROR) //监听指定端口 用于监听的套接字
 	{					     //int listen( int sockfd, int backlog);
 						     //sockfd：用于标识一个已捆绑未连接套接口的描述字。
 						     //backlog：等待连接队列的最大长度。
@@ -98,4 +98,40 @@ bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 		return 0;
 	}
 	
+	SOCKET revSocket;  //对应此时所建立连接的套接字的句柄
+	sockaddr_in remoteAddr;   //接收连接到服务器上的地址信息
+	int remoteAddrLen = sizeof(remoteAddr);	
+
+	revSocket = accept(listenSocket, (SOCKADDR*)&remoteAddr, &remoteAddrLen);  /*等待客户端请求，服务器接收请求*/
+		//为了使服务器端接受客户端的连接请求，就要使用accept() 函数，该函数新建一Socket与客户端的Socket相通，
+		//原先监听之Socket继续进入监听状态，等待他人的连接要求。该函数调用成功返回一个新产生的Socket对象，否则返回INVALID_SOCKET。
+	if (revSocket == INVALID_SOCKET)
+	{
+		printf("客户端发出请求，服务器接收请求失败：\n",WSAGetLastError());
+		closesocket(listenSocket);
+		WSACleanup();
+		return 0;
+	}
+	else
+		printf("客服端与服务器建立连接成功：%s \n", inet_ntoa(remoteAddr.sin_addr));
+
+	char revData[255] = "";
+	char *sendData = new char[100];
+	/*通过建立的连接进行通信*/
+	int res = recv(revSocket, revData, 255, 0);
+	if (res > 0)
+	{
+		printf("Bytes received: %d\n", res);
+		printf("客户端发送的数据: %s\n", revData);
+	}
+	else if (res == 0)
+		printf("Connection closed\n");
+	else
+		printf("recv failed: %d\n", WSAGetLastError());
+
 	
+	cin>>sendData;
+	send(revSocket, sendData, strlen(sendData), 0);
+	
+	closesocket(listenSocket);
+	WSACleanup();
