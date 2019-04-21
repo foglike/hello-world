@@ -58,3 +58,18 @@ sun.sun_family = AF_LOCAL;
 strcpy(sun.sun_path, filepath);
 bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 ***************************************************************************************
+
+#include <WinSock2.h>
+  WORD sockVersion = MAKEWORD(2, 2);  	
+	WSADATA wsaData;   	
+	if (WSAStartup(sockVersion, &wsaData) != 0) //加载套接字库,进行相应的socket库绑定  WSAStartup返回0表示设置初始化成功
+		return 0; 
+
+	//AF_INET表示IPv4，SOCK_STREAM数据传输方式，IPPROTO_TCP传输协议;
+	SOCKET listenSocket = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+	if (listenSocket == INVALID_SOCKET)
+	{
+		printf("套接字创建失败");
+		WSACleanup();
+		return 0;
+	}
