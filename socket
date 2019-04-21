@@ -80,7 +80,7 @@ bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 
 	sockaddr_in addrListen; 	     //配置监听地址和端口
 	addrListen.sin_family = AF_INET;     //指定IP格式
-	addrListen.sin_port = htons(8888);   //绑定端口号
+	addrListen.sin_port = htons(8888);   //绑定端口号  htons()将主机的无符号短整形数转换成网络字节顺序
 	addrListen.sin_addr.S_addr = INADDR_ANY;  //表示任何IP   service.sin_addr.s_addr = inet_addr("127.0.0.1");
 	if (bind(listenSocket, (SOCKADDR*)&addrListen, sizeof(addrListen)) == SOCKET_ERROR)  //绑定SOCKET
 	{
@@ -135,7 +135,7 @@ bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 	
 	closesocket(listenSocket);
 	WSACleanup();
-
+TCP：
 服务器端
 1、创建套接字（socket）
 2、将套接字绑定到一个本地地址和端口上（bind）
@@ -163,3 +163,15 @@ bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 		printf("客户端建立连接成功，准备发送数据！\n");
 3、和服务器端进行通信（send/recv）
 4、关闭套接字
+***************************************************************************************
+UDP：
+服务器：（接收端）
+1)创建套接字（socket）
+2)将套接字绑定到一个本地地址和端口上（bind）
+3)用返回的套接字和客户端进行通信（recvfrom）；
+4)关闭套接字
+
+客户端：（发送端）
+1)创建套接字（socket）
+2)向服务器发送数据(sendto)
+3)关闭套接字
