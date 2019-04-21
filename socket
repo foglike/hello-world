@@ -60,16 +60,42 @@ bind(sockfd, (struct sockaddr*)&sun, sizeof(sun));
 ***************************************************************************************
 
 #include <WinSock2.h>
-  WORD sockVersion = MAKEWORD(2, 2);  	
+  	WORD sockVersion = MAKEWORD(2, 2);  	
 	WSADATA wsaData;   	
 	if (WSAStartup(sockVersion, &wsaData) != 0) //加载套接字库,进行相应的socket库绑定  WSAStartup返回0表示设置初始化成功
 		return 0; 
 
 	//AF_INET表示IPv4，SOCK_STREAM数据传输方式，IPPROTO_TCP传输协议;
-	SOCKET listenSocket = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+	SOCKET listenSocket = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP); 
+		//第1个是指定通信发生的区域，在UNIX下有AF_UNIX、AF_INET、AF_NS等
+		//第2个参数是套接字的类型，在AF_INET地址族下，有SOCK_STREAM、SOCK_DGRAM、SOCK_RAW三种套接字类型。
+		//SOCK_STREAM也就是通常所说的TCP，而SOCK_DGRAM则是通常所说的UDP，而SOCK_RAW则是用于提供一些较低级的控制的
+		//第3个参数依赖于第2个参数，用于指定套接字所用的特定协议，设为0表示使用默认的协议。
 	if (listenSocket == INVALID_SOCKET)
 	{
 		printf("套接字创建失败");
 		WSACleanup();
 		return 0;
 	}
+
+	sockaddr_in addrListen; 	     //配置监听地址和端口
+	addrListen.sin_family = AF_INET;     //指定IP格式
+	addrListen.sin_port = htons(8888);   //绑定端口号
+	addrListen.sin_addr.S_addr = INADDR_ANY;  //表示任何IP   service.sin_addr.s_addr = inet_addr("127.0.0.1");
+	if (bind(listenSocket, (SOCKADDR*)&addrListen, sizeof(addrListen)) == SOCKET_ERROR)  //绑定SOCKET
+	{
+		printf("绑定失败");
+		closesocket(listenSocket);
+		return 0;
+	}
+
+	if (listen(listenSocket, 5) == SOCKET_ERROR) //监听指定端口
+	{					     //int listen( int sockfd, int backlog);
+						     //sockfd：用于标识一个已捆绑未连接套接口的描述字。
+						     //backlog：等待连接队列的最大长度。
+		printf("监听出错");
+		closesocket(listenSocket);
+		return 0;
+	}
+	
+	
